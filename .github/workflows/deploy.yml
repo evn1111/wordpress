@@ -1,0 +1,56 @@
+name: Deploy WordPress with Docker
+
+# Триггер пайплайна: запуск при пуше в ветку main
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest  # Используем последнюю версию Ubuntu
+
+    steps:
+      # Шаг 1: Проверка кода (клонирование репозитория)
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Получаем всю историю коммитов
+
+      # Шаг 2: Настройка Docker Buildx (для сборки мультиархитектурных образов)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Шаг 3: Логин в Docker Hub (если нужно публиковать образы)
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}  # Логин Docker Hub
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}     # Токен Docker Hub
+
+      # Шаг 4: Сборка Docker-образов
+      - name: Build Docker images
+        run: |
+          docker-compose -f docker-compose.yml build  # Собираем образы из docker-compose.yml
+
+      # Шаг 5: Публикация Docker-образов (опционально, если нужно публиковать в Docker Hub)
+      - name: Push Docker images
+        run: |
+          docker-compose -f docker-compose.yml push  # Публикуем образы в Docker Hub
+
+      # Шаг 6: Деплой на сервер через SSH
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v0.1.10  # Действие для выполнения команд через SSH
+        with:
+          host: ${{ secrets.SSH_HOST }}          # IP-адрес или домен сервера
+          username: ${{ secrets.SSH_USERNAME }}   # Имя пользователя для SSH
+          key: ${{ secrets.SSH_PRIVATE_KEY }}     # Приватный SSH-ключ
+          script: |
+            # Переходим в директорию проекта на сервере
+            cd ~/wordpress
+
+            # Обновляем Docker-образы
+            docker-compose -f docker-compose.yml pull
+
+            # Перезапускаем контейнеры
+            docker-compose -f docker-compose.yml up -d
